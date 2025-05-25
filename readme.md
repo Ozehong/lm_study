@@ -30,3 +30,5 @@
 
 [46-59套AI大模型系列](https://pan.baidu.com/s/13qZE4104osEdyTabeXrinw)
 提取码: kfi8 
+
+[AI神器大全](https://aishenqi.net/)
