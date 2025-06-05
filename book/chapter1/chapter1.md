@@ -1,3 +1,66 @@
+- [Architecture ⼤模型整体架构](#architecture-模型整体架构)
+  - [Tokenization 分词](#tokenization-分词)
+    - [1.1 分词介绍](#11-分词介绍)
+      - [分词目的](#分词目的)
+      - [分词粒度](#分词粒度)
+      - [分词实例](#分词实例)
+      - [提升分词的意义](#提升分词的意义)
+    - [1.2 分词算法](#12-分词算法)
+      - [Byte Pair Encoding(BPE)](#byte-pair-encodingbpe)
+    - [1.3 常⽤分词库](#13-常分词库)
+      - [SentencePiece](#sentencepiece)
+  - [2. Embedding 词嵌⼊](#2-embedding-词嵌)
+    - [2.1 词嵌入介绍](#21-词嵌入介绍)
+    - [2.2 词嵌入方法](#22-词嵌入方法)
+      - [onehot](#onehot)
+      - [Word2Vec](#word2vec)
+  - [3. Attention 注意力](#3-attention-注意力)
+    - [3.1 思想理解](#31-思想理解)
+    - [3.2 注意力公式](#32-注意力公式)
+    - [3.3 transformer 中的 attention](#33-transformer-中的-attention)
+      - [3.3.1 encoder 和 decoder中的self-attention](#331-encoder-和-decoder中的self-attention)
+      - [3.3.2 decoder 中的cross-attention](#332-decoder-中的cross-attention)
+      - [3.3.3 attention计算复杂度的优化](#333-attention计算复杂度的优化)
+        - [3.3.3.1 sparse attention](#3331-sparse-attention)
+        - [3.3.3.2 linear attention](#3332-linear-attention)
+          - [3.3.3.2.1 公式](#33321-公式)
+          - [3.3.3.2.2 计算过程](#33322-计算过程)
+          - [3.3.3.2.3 技术细节](#33323-技术细节)
+          - [3.3.3.2.4 优点](#33324-优点)
+        - [3.3.3.3 KV Cache 键值缓存](#3333-kv-cache-键值缓存)
+        - [3.3.3.4 Huggingface 的 KV Cache实现](#3334-huggingface-的-kv-cache实现)
+        - [3.3.3.5 kv cache 峰值显存占用分析](#3335-kv-cache-峰值显存占用分析)
+        - [3.3.3.6 kv cache 优化](#3336-kv-cache-优化)
+      - [FFN \& Add \& LN 前馈层、残差连接、层归一化](#ffn--add--ln-前馈层残差连接层归一化)
+        - [三个模块的作用](#三个模块的作用)
+        - [ln位置与影响](#ln位置与影响)
+        - [Layer Normalization 的计算公式](#layer-normalization-的计算公式)
+          - [1. 核心思路](#1-核心思路)
+          - [2. 公式](#2-公式)
+          - [3. 计算过程](#3-计算过程)
+          - [4. 技术细节](#4-技术细节)
+          - [5. 优点](#5-优点)
+    - [1. RMSNorm（Root Mean Square Layer Normalization）](#1-rmsnormroot-mean-square-layer-normalization)
+      - [1.1 核心思路](#11-核心思路)
+      - [1.2 公式](#12-公式)
+      - [1.3 计算过程](#13-计算过程)
+      - [1.4 优点](#14-优点)
+      - [1.5 示例代码（PyTorch 实现）](#15-示例代码pytorch-实现)
+    - [2. DeepNorm](#2-deepnorm)
+      - [2.1 核心思路](#21-核心思路)
+      - [2.2 公式](#22-公式)
+      - [2.3 计算过程](#23-计算过程)
+      - [2.4 优点](#24-优点)
+      - [2.5 示例代码（PyTorch 实现）](#25-示例代码pytorch-实现)
+    - [3. BatchNorm（Batch Normalization）](#3-batchnormbatch-normalization)
+      - [3.1 核心思路](#31-核心思路)
+      - [3.2 公式](#32-公式)
+      - [3.3 计算过程](#33-计算过程)
+      - [3.4 优点](#34-优点)
+      - [3.5 示例代码（PyTorch 实现）](#35-示例代码pytorch-实现)
+    - [总结](#总结)
+
+
 # Architecture ⼤模型整体架构
 
 经典论⽂《[Attention Is All You Need](https://arxiv.org/pdf/1706.03762)》中提出的 Transformer 结构，成为了⼤模型的架构基础
@@ -167,12 +230,12 @@ Self Attention 是 $O(N^2)$ 的，它要对序列中的任意两个向量都要�
 
 ##### 3.3.3.2 linear attention
 
-主要思想就是将 softmax 拿掉 ，然后先算 K 转置 V ，这样算法复杂度从$O(N^2d)$ 变为 $O(Nd^2 )$ 的接近线性
+主要思想就是将 softmax 拿掉 ，然后先算 K 转置 V ，这样算法复杂度从$O(N^2d)$ 变为 $O(Nd^2)$ 的接近线性
 
 - **特征映射**：使用非线性函数（如 ELU + 1）将 Query 和 Key 映射到非负空间。
 - **重新排列计算顺序**：先计算 $K$ 和 $V$ 的乘积，再与 $Q$ 相乘，避免了显式计算 $QK^T$，从而减少了计算量。
 
-###### 2. 公式
+###### 3.3.3.2.1 公式
 
 Linear Attention 的公式可以表示为：
 $$ \text{Attention}(Q, K, V) = \frac{\phi(Q)(\phi(K)^T V)}{\phi(Q)(\phi(K)^T \mathbf{1})} $$
@@ -181,7 +244,7 @@ $$ \text{Attention}(Q, K, V) = \frac{\phi(Q)(\phi(K)^T V)}{\phi(Q)(\phi(K)^T \ma
 - $\phi(\cdot)$ 是特征映射函数，如 $\phi(x) = \text{elu}(x) + 1$，用于将 $Q$ 和 $K$ 映射到非负空间。
 - $\mathbf{1}$ 是一个全1向量，用于归一化。
 
-###### 3. 计算过程
+###### 3.3.3.2.2 计算过程
 
 1. **特征映射**：
    $$ \phi(Q) = \text{elu}(Q) + 1 $$
@@ -193,13 +256,13 @@ $$ \text{Attention}(Q, K, V) = \frac{\phi(Q)(\phi(K)^T V)}{\phi(Q)(\phi(K)^T \ma
 4. **计算最终输出**：
    $$ \text{Output} = \frac{\phi(Q)(KV)}{Z} $$
 
-###### 4. 技术细节
+###### 3.3.3.2.3 技术细节
 
 - **特征映射函数**：常用的特征映射函数包括 ELU + 1 和 ReLU，这些函数可以将输入映射到非负空间，从而简化计算。
 - **计算顺序**：通过先计算 $KV$，再与 $Q$ 相乘，避免了计算 $QK^T$，显著减少了计算量。
 - **适用场景**：Linear Attention 特别适合处理长序列数据，如文本、基因组数据和高分辨率图像。
 
-###### 5. 优点
+###### 3.3.3.2.4 优点
 
 - **计算效率高**：将复杂度从 $O(N^2)$ 降低到 $O(N)$，显著减少了计算和内存开销。
 - **保持全局交互能力**：与传统注意力机制相比，Linear Attention 仍然能够捕获全局信息。
@@ -207,15 +270,63 @@ $$ \text{Attention}(Q, K, V) = \frac{\phi(Q)(\phi(K)^T V)}{\phi(Q)(\phi(K)^T \ma
 
 一种实现⽅式 ，[完整代码](https://github.com/lucidrains/linear-attention-transformer)
 
-##### KV Cache 键值缓存
+##### 3.3.3.3 KV Cache 键值缓存
 
-**⼀句话总结**：k 和 v 指的分别是attention机制中的 key 和 value 的状态值，kv cache 只出现在 transformer 结构的⾃回归的	 decoder 中，其是为了避免 scaled dot-product attention 过程中的重复计
-算。
+**⼀句话总结**：$k$ 和 $v$ 指的分别是attention机制中的 $key$ 和 $value$ 的状态值，kv cache 只出现在 transformer 结构的⾃回归的 decoder 中，其是为了避免 **scaled dot-product attention** 过程中的重复计算。
 
-KVCache：主流的⾃回归 LLM 所⽤的 Causal Attention，在 token by token 递归推理⽣成时，每次计算当前 token 的  attention 的时候，都需要⽤到序列前⾯的所有 token 的 K 和 V，因此为了避免重新再计算⼀遍这部分，可以将之前序列 token 计算过的 KV 缓存下来⽤，这就是 KVCache 技术  
-下图所⽰，第三⾏仅根据第三个 Q 和前三个 KV 向量确定 ，后续 token 不会影响它  
+**KVCache**：主流的⾃回归 LLM 所⽤的 Causal Attention，在 token by token 递归推理⽣成时，每次计算当前 token 的  attention 的时候，都需要⽤到序列前⾯的所有 token 的 $K$ 和 $V$，因此为了避免重新再计算⼀遍这部分，可以将之前序列 token 计算过的 KV 缓存下来⽤，这就是 KVCache 技术  
+下图所⽰，第三⾏仅根据第三个 $Q$ 和前三个 $KV$ 向量确定 ，后续 token 不会影响它  
 
 **前置条件**：矩阵可以分块，那么将矩阵 A 拆分为[:s],[s:]两部分，分别和矩阵 B 相乘，那么最终结果可以直接拼接，该结果与不分拆结果⼀致
+![kv cache原理](<pic/pic7.png>)
+![不使用kvcache过程1](<pic/pic8.png>)
+![不使用kvcache过程2](<pic/pic9.png>)
+
+##### 3.3.3.4 Huggingface 的 KV Cache实现
+
+```
+
+```
+
+##### 3.3.3.5 kv cache 峰值显存占用分析
+
+存储 `kv_length` 个 KV value，形状为 `[b, head_num, kv_seq_len, head_dim]`。假设输入序列的长度为 `s`，输出序列的长度为 `n`，以 FP16 来保存 KV cache，那么 KV cache 的峰值显存占用大小为：
+$$
+b(s + n)h * l * 2 * 2 = 4blh(s + n)
+$$
+
+其中：
+- 第一个 `2` 表示 K/V cache；
+- 第二个 `2` 表示 FP16 占 2 个 bytes。
+
+以 GPT-3（175B 参数量）为例，对比 KV cache 与模型参数占用显存的大小。
+
+- **GPT-3 模型参数占用显存大小**：350GB（FP16）。
+- **层数**：`l = 96`。
+- **维度**：`h = 12888`。
+
+
+##### 3.3.3.6 kv cache 优化
+ 
+1.  **共⽤ KV cache**：如MQA,GQA
+2.  **窗⼝优化**：  
+`KV cache` 的作⽤是计算 `attention` ，当推理时的⽂本⻓度 `T` ⼤于训练时的最⼤⻓度 `L` 时 ，⼀个⾃然的想法就是滑动窗⼝ 。这⾥⼜有三种⽅式：
+    - `固定窗⼝⻓度`(图b)，典型代表即 `Longformer` 该⽅法实现简单，⽽空间复杂度只有O(TL)，但是精度下降⽐较⼤
+    - `KV重计算`(图c) ，该⽅法需要每次计算都重新计算⻓度为 `L` 的 `KV cache`，由于重计算的存在，其精度可以保证，但是性能损失⽐较⼤
+    - `箭型 attention 窗⼝`，在 [LM-Infinit](https://arxiv.org/pdf/2308.16137) 中就已经被提出了，其基本原理和[StreamingLLM](https://arxiv.org/pdf/2309.17453)是⼀致的
+    - 
+![alt text](<pic/pic10.png>)
+
+3.  **量化与稀疏**： 当前主流推理框架都在逐步⽀持 KV Cache 量化 ，⼀个典型的案例是[lmdeploy](https://github.com/InternLM/lmdeploy)
+4.  **存储与计算优化**：
+    - [vLLM](https://github.com/vllm-project/vllm) 的 `PagedAttention` ，简单来说就是允许在⾮连续的内存空间中存储连续的 `K` 和 `V`
+    - `FlashDecoding` 是在 `FlashAttention` 的基础上针对 `inference` 的优化主要分为三步：
+      - ⻓⽂本下将 `KV` 分成更⼩且⽅便并⾏的 `chunk`
+      - 对每个 `chunk` 的 `KV`，`Q`和他们进⾏之前⼀样的 `FlashAttention` 获取这个 `chunk` 的结果
+      - 对每个 `chunk` 的结果进⾏ `reduce`
+
+![alt text](<pic/pic11.png>) 
+[跳转到MHA实现](./code.ipynb#MHA)
 
 #### FFN & Add & LN 前馈层、残差连接、层归一化
 
