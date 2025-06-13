@@ -6,6 +6,7 @@
 [markdown笔记整理](https://www.cnblogs.com/lsgxeva/p/15731069.html)
 
 ## reference
+[基于qwen3的准备](https://github.com/Xjj020315/qwen3-master/tree/main)
 [RLHF实验记录-PPO分析3-真实文本比较](https://zhuanlan.zhihu.com/p/17433080290)  
 [RL learning](https://github.com/dingyuan-shi/RLLearning)  
 [LLM+RL实践记录](https://zhuanlan.zhihu.com/c_1860012871443959808)  
